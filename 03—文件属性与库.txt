@@ -1,0 +1,294 @@
+一、获取文件属性（选讲）
+我们可以使用stat()/fstat()/lstat()函数来获取某个文件的属性信息。
+注意：stat既是Linux系统的用于查看文件属性的指令，又是在编程过程中可以使用的一个获取文件属性信息的函数。
+其中stat()函数可以根据文件名（可带路径）获取文件的属性信息；fstat()函数可以根据已打开文件的文件描述符获得该文件的属性信息；lstat()函数用法类似于stat()，不过若该文件是一个符号链接文件则会返回该符号链接的信息而不是该符号链接的引用文件的信息。
+函数stat()/fstat()/lstat()
+需要头文件：#include<sys/stat.h>
+            #include<sys/types.h>
+            #include<unistd.h>
+函数原型：int stat(const char *pathname,struct stat *buf);
+          int fstat(int fd,struct stat *buf);
+		  int lstat(const char *pathname,struct stat *buf);
+函数参数：pathname：打开文件名（可以包含具体路径名）
+          fd：已打开文件的文件描述符
+		  buf：struct stat类型的结构体指针，用于存放文件信息
+函数返回值：成功：0
+            失败：-1
+注意：必须定义struct stat类型结构体然后使用地址传递的方式传递参数，不允许直接定义struct stat*类型指针直接传参
+struct stat结构体成员：
+struct stat
+{
+	dev_t     st_dev;     /* ID of device containing file - 文件所在的设备ID*/
+	ino_t     st_ino;     /* inode number - inode节点号*/
+	mode_t    st_mode;    /* protection - 文件的模式（文件、目录等）*/
+	nlink_t   st_nlink;   /* number of hard links - 链接至此文件的链接数（硬链接）*/
+	uid_t     st_uid;     /* user ID of owner - 文件所有者ID*/
+	gid_t     st_gid;     /* group ID of owner - 文件组ID*/
+	dev_t     st_rdev;    /* device ID (if special file) - 设备号（针对某些特殊设备文件）*/
+	off_t     st_size;    /* total size, in bytes - 文件大小（单位字节）*/
+	blksize_t st_blksize; /* blocksize for file system I/O - 系统块大小*/
+	blkcnt_t  st_blocks;  /* number of 512B blocks allocated - 文件所占的块数*/
+	time_t    st_atime;   /* time of last access - 最近被访问时间（例如使用read()读取数据）*/
+	time_t    st_mtime;   /* time of last modification - 最近被修改时间（例如使用write()写入数据）*/
+	time_t    st_ctime;   /* time of last status change - 文件状态改变时间*/
+};
+其中文件的类型存放在结构体成员st_mode内
+/*****单词翻译*****/
+regular file：普通文件
+directory file：目录文件
+character special file：字符特殊设备文件
+block special file：块设备特殊文件
+FIFO：进程间通信（又名管道）
+socket：套接字
+symbolic link：符号链接，指向另一个文件
+/*****单词翻译end**/
+结构体成员st_mode内存取的宏定义以及相关含义（部分，其他相关宏定义请查看帮助手册）：
+	S_IFREG(m)  is it a regular file?
+	S_IFDIR(m)  directory?
+	S_IFCHR(m)  character device?
+	S_IFBLK(m)  block device?
+	S_IFIFO(m) 	FIFO (named pipe)?
+	S_IFLNK(m)  symbolic link? (Not in POSIX.1-1996.)
+	S_IFSOCK(m) socket? (Not in POSIX.1-1996.)
+示例：编程实现stat指令的类似功能，即对指定路径的文件获取其相关文件信息
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[])
+{
+	struct stat sb;
+
+	if (argc != 2)
+	{
+		perror("Too few Arguments. Usage: <command> <pathname>\n");
+		exit(0);
+	}
+	if (stat(argv[1], &sb) == -1)
+	{
+		perror("stat");
+		exit(0);
+	}
+	printf("File type:");
+	switch (sb.st_mode & S_IFMT)//S_IFMT用于判定该文件的类型
+	{
+		case S_IFBLK:  printf("block device\n");            break;
+		case S_IFCHR:  printf("character device\n");        break;
+		case S_IFDIR:  printf("directory\n");               break;
+		case S_IFIFO:  printf("FIFO/pipe\n");               break;
+		case S_IFLNK:  printf("symlink\n");                 break;
+		case S_IFREG:  printf("regular file\n");            break;
+		case S_IFSOCK: printf("socket\n");                  break;
+		default:       printf("unknown?\n");                break;
+	}
+
+	printf("I-node number:%ld\n", (long) sb.st_ino);
+	printf("Mode:%lo (octal)\n",(unsigned long) sb.st_mode);
+	printf("Link count:%ld\n", (long) sb.st_nlink);
+	printf("Ownership:UID=%ld   GID=%ld\n",(long) sb.st_uid, (long) sb.st_gid);
+	printf("Preferred I/O block size: %ld bytes\n",(long) sb.st_blksize);
+	printf("File size:%lld bytes\n",(long long) sb.st_size);
+	printf("Blocks allocated:%lld\n",(long long) sb.st_blocks);
+	printf("Last status change:%s", ctime(&sb.st_ctime));
+	printf("Last file access:%s", ctime(&sb.st_atime));
+	printf("Last file modification:%s", ctime(&sb.st_mtime));
+	return 0;
+}
+可以先使用stat指令查看该文件，再运行这个程序查看该文件并做对比
+
+二、操作目录相关函数（选讲）
+我们可以使用opendir()/readdir()函数来打开某目录并获取目录内文件的信息。在这里opendir()函数相当于fopen()函数，readdir()函数相当于fread()函数，只不过操作的流的结构体类型不同。
+函数opendir()
+需要头文件：#include<sys/types.h>
+            #include<dirent.h>
+函数原型：DIR *opendir(const char *name);
+函数参数：name：打开目录名（可以包含具体路径名）
+函数返回值：成功：操作该目录的流的指针（DIR*）
+            失败：NULL
+该函数的返回值是操作目录的流DIR的指针，其中操作目录的流DIR的结构体成员如下：
+struct __dirstream
+{
+	void *__fd; /* struct hurd_fd' pointer for descriptor. */
+	char *__data; /* Directory block. */
+	int __entry_data; /* Entry number `__data' corresponds to. */
+	char *__ptr; /* Current pointer into the block. */
+	int __entry_ptr; /* Entry number `__ptr' corresponds to. */
+	size_t __allocation;/* Space allocated for the block. */
+	size_t __size; /* Total valid data in the block. */
+	__libc_lock_define (, __lock) /* Mutex lock for this structure. */
+};
+typedef struct __dirstream DIR;
+
+函数readdir()
+需要头文件：#include<dirent.h> 
+函数原型：struct dirent *readdir(DIR *dirp);
+函数参数：dirp：操作目录的流的指针
+函数返回值：成功：struct dirent*类型的指针
+            失败：NULL
+该函数的返回值是结构体struct dirent的结构体指针，结构体成员如下：
+struct dirent
+{
+	long d_ino; /* inode number 索引节点号 */
+	off_t d_off; /* offset to this dirent 在目录文件中的偏移 */
+	unsigned short d_reclen;/* length of this d_name 文件名长 */
+	unsigned char d_type; /* the type of d_name 文件类型 */
+	char d_name [NAME_MAX+1];/* file name (null-terminated) 文件名 */
+}
+示例：编程实现模拟Linux的ls指令的程序。
+思路：使用opendir()函数打开一个目录，然后使用readdir()函数获取这个目录内的文件的相关信息并依次输出（这里只输出d_name即可）
+#include<unistd.h>
+#include<sys/types.h>
+#include<fcntl.h>
+#include<dirent.h>
+#include<stdio.h>
+#ifndef NULL
+#define NULL 0
+#endif
+#ifndef ERROR
+#define ERROR 0
+#define OK 1
+#endif
+typedef int Status;
+Status ls(char *dirname)
+{
+	DIR *p_dir;
+	struct dirent *p_dirent;
+	if((p_dir=opendir(dirname))==NULL)
+	{
+		fprintf(stderr,"---->can\'t open %s\n",dirname);
+		return ERROR;
+	}
+	while((p_dirent=readdir(p_dir)))
+	{
+		printf("%s\n",p_dirent->d_name);
+	}
+	closedir(p_dir);
+	return OK;
+}
+int main(int argc,char **argv)
+{
+	if(argc==1)//如果没给具体目录默认为.即当前目录
+		ls(".");
+
+	while(--argc)//若携带了多个目录名则需要将每个目录内的文件都输出
+	{
+		printf("%s\n",*++argv);
+		ls(*argv);
+	}
+}
+
+三、静态库与动态库的分析
+1、什么是库？
+库（library）是一种可执行代码的二进制形式，通常把一些常用的函数制作成各种函数库，然后被系统载入内存中运行。库内一般都是各种标准程序、子程序、相关文件以及目录等的集合，内置一些经常用的程序。主要有：
+1）标准子程序：例如三角函数、反三角函数等
+2）标准程序：例如解常微分方程等
+3）服务性程序：例如输入、输出、磁盘操作、调试等。
+由于windows与linux系统不同，因此二者的二进制库是不兼容的。
+Linux系统下的库分为静态库与动态库两种。二者的不同点是在载入时间的不同。
+静态库在程序编译时的链接阶段被链接到目标代码中，运行程序时将不再需要静态库。编译后的可执行程序体积较大。
+动态库在程序编译时并不会马上链接到目标代码中，而是在执行阶段才被程序载入，因此编译后的可执行程序体积较小，但是需要系统动态库存在。
+库是前辈高手写好的成熟的可以直接复用的代码，只需遵守使用协议即可。不可能所有人的编程学习都是从零开始，库的存在使得程序开发变得更加简易。而且如果不同的应用程序调用同样的库，那么内存内只需有一份该库的实例即可，节省了存储空间。
+
+2、制作一个静态库
+我们可以使用GNU下的ar工具来制作一个静态库
+ar是类似gcc的一个GNU工具包内的工具，作用是建立、修改、提取归档文件。归档文件是包含多个文件内容的一个大文件，被包含文件的原始内容、权限、时间戳、所有者等属性都保存于归档文件中，并且可以通过“提取”来还原该文件。
+示例：自己制作一个静态库，库函数的功能是传递一个字符串并输出。
+第一步：需要准备3个文件：hello.h、hello.c、test.c。其中hello.h和hello.c用于制作静态库，test.c是测试程序主函数
+//文件hello.h
+#ifndef __HELLO_H__
+#define __HELLO_H__
+#include<stdio.h>
+void hello(const char *name);
+#endif
+
+//文件hello.c
+#include"hello.h"
+void hello(const char *name)
+{
+	printf("Hello %s, You are handsome!\n",name);
+}
+
+//文件test.c
+#include"hello.h"
+int main()
+{
+	hello("LiLaoShi");//调用自己制作的库
+	return 0;
+}
+第二步：将hello.c编译生成目标文件hello.o
+gcc hello.c -c -o hello.o
+第三步：使用ar将hello.o制作成静态库
+ar crs libmyhello.a hello.o
+ar参数解析：
+1.c：表示无提示方式创建文件包
+2.r：在文件包中替代文件
+3.s：强制重新生成文件包的符号表
+这样就制作了一个名为libmyhello.a的文件包（即静态库）
+第四步：编译test.c，将刚制作的静态库加载至程序内
+gcc test.c -L. -lmyhello -o hello
+gcc参数解析：
+1.-L：表示增加目录，让编译器可以在该目录下寻找库文件。后面的 . 表示当前目录；
+2.-l：表示加载libXXX.a/libXXX.so库文件。
+
+这样我们就生成了一个hello的可执行文件。执行该文件，会输出"Hello LiLaoShi, You are handsome!"，这样我们就成功制作了一个库函数hello。
+练习：将libmyhello.a文件删除，再次执行hello程序查看
+若我们删除库（即libmyhello.a文件），再次执行该程序仍然可以得到正确的结果。这是因为静态库在链接阶段已经和程序整合到一起，即使原始库文件不存在，程序依然可以成功执行。
+
+3、制作一个动态库
+我们可以使用gcc工具来制作一个动态库
+示例：自己制作一个动态库，库函数的功能是传递一个字符串并输出。
+第一步：需要准备3个文件：hello.h、hello.c、test.c。其中hello.h和hello.c用于制作动态库，test.c是测试程序主函数
+//代码同上，略
+第二步：使用gcc编译生成动态库
+gcc hello.c -fPIC -c -o hello.o
+gcc hello.o -shared -o libmyhello.so
+（或者直接一步：gcc hello.c -fPIC -shared -o libmyhello.so）
+gcc参数解析：
+1.-fPIC（或-fpic）：表示编译为位置独立的代码。位置独立的代码即位置无关代码，在可执行程序加载的时候可以存放在内存内的任何位置。若不使用该选项则编译后的代码是位置相关的代码，在可执行程序加载时是通过代码拷贝的方式来满足不同的进程的需要，没有实现真正意义上的位置共享。
+2.-shared：指定生成动态链接库
+此时我们就生成了动态库libmyhello.so。
+若此时编译文件时加载库
+gcc test.c -L. -lmyhello -o hello
+运行文件hello时会发现报错：
+./hello: error while loading shared libraries: libmyhello.so: cannot open shared object file: No such file or directory
+这是因为Linux系统还无法定位到我们自己制作的库的位置，即我们暂时还无法使用该动态库。
+对于Linux系统而言，在可执行程序加载动态库的时候，不仅要知道该库的名字，还需要知道其绝对路径。
+我们可以使用ldd指令查看某个可执行程序加载库的情况
+ldd hello
+	linux-gate.so.1 =>  (0xb77b0000)
+	libmyhello.so => not found
+	libc.so.6 => /lib/i386-linux-gnu/libc.so.6 (0xb75f6000)
+	/lib/ld-linux.so.2 (0xb77b1000)
+第三步：定位自己制作的动态库
+要想让自己制作的动态库生效，我们需要了解正常情况下系统是如何加载一个动态库的。以我们熟悉的stdio库为例，系统在加载标准输入输出库时遵循以下几个步骤：
+1.执行./hello指令，终端解释该指令，终端指示应加载动态库stdio，寻找存放动态库的配置文件。
+2.存放动态库的配置文件默认目录为/etc/ld.so.conf.d/以及下属的众多子目录内的配置文件。配置文件指示该库的绝对路径在/usr/lib或/lib下。
+3.去往/usr/lib或/lib，将存储的stdio库加载到程序hello中。
+为了让系统能成功找到自己制作的动态库，需要定位到该动态库的位置。参照正常加载动态库的方式，我们可以有三种方式：
+1）把自己制作的库拷贝到/usr/lib和/lib下。
+2）在LD_LIBRARY_PATH环境变量中添加自己制作的库所在的位置。
+3）添加/etc/ld.so.conf.d/XXX.conf文件（XXX需要自己命名），把库所在的路径添加到文件末尾并执行ldconfig刷新。
+注意：练习这三种方法时尽量清除上一种方法的效果影响保证三种方法是独立生效的。
+第一种：将库拷贝到/usr/lib和/lib下。
+sudo cp libmyhello.so /usr/lib
+sudo cp libmyhello.so /lib
+此时再执行./hello即可得到正确的显示结果。
+第二种：修改LD_LIBRARY_PATH环境变量
+sudo vim /etc/bash.bashrc
+在文件最后，添加：
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/linux/file/dongtaiku
+保存退出，重启终端，此时再执行./hello即可得到正确的显示结果。
+第三种：添加/etc/ld.so.conf.d/XXX.conf文件
+sudo vim /etc/ld.so.conf.d/my.conf
+在文件内添加动态库的目录
+/home/linux/file/dongtaiku
+保存退出，执行ldconfig使设置生效
+sudo ldconfig
+此时再执行./hello即可得到正确的显示结果。
+思考：使用静态库与动态库时，加载库的指令是相同的（都是gcc test.c -L. -lmyhello -o hello）。若静态库与动态库重名（例如libmyhello.a和libmyhello.so），则系统会以哪个库为准？
+练习：验证静态库与动态库重名时的加载库的情况。
+提示：使用同样的代码分别编译成静态库与动态库，两个库的名称相同，但是不配置动态库的路径。然后编译生成可执行程序，若该程序可以执行则表示以静态库为准，若无法执行则表示以动态库为准。
+
+从程序hello的执行结果可以看出，当静态库与动态库重名时，系统会以动态库为准。
